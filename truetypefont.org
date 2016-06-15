@@ -1,0 +1,488 @@
+
+
+* 概述
+
+http://www.docin.com/p-44990240.html
+
+ PostScript Type1 Adobe开发的字体,加密过,收取专利费的.采用三次B-样条.
+
+ TrueType 由 Microsft 和 Apple联科开发的PDL(page description language)语言TrueImage中的字型描述部分.最初指向打破
+PostScript发明者 Adobe在该领域的垄断地位.采用二次B-样条(Bezier-spline).(推出后,Type1宣布免费)
+
+ OpenType  由 Microsotf ,Adobe联合开发,是TrueType的扩展,添加了对 -PostScript- 的支持.
+扩展名可能是.OTP或.TTF
+
++ 只包含CFF(PostScript)数据(没有TrueType outlines)的字库扩展名总是.OTF
++ 出于兼容,包含TrueType outlines的字库起扩展名可能是.OTF或者.TTF .
++ 无论字库中是否包含OpenType layout,TrueType Collection字库扩展名应该是.TTC .
+
+
+* TTF文件总体结构
+  文件头(offset table)
+  描述表目录(table directory)
+  描述表(tables)
+
+** offset table:
+#+BEGIN_SRC
+  fixed sfnt_version;     //TTF文件版本号
+  ushort numTables;        //描述表数目
+  ushort searchRange;      //描述表快速查找范围
+  ushort entrySelector;    //描述表入口选择
+  ushort rangeShift;       //范围调整
+#+END_SRC
+
+**  描述表目录:(个数由numTables决定,每个目录项16字节)
+#+BEGIN_SRC
+  ulong tag;              //描述表名称(4个字符)
+  ulong checkSum;         //描述表内容的校验和
+  ulong offset;           //此描述表的位置偏移(从文件头开始)
+  ulong length;           //描述表字节长度
+#+END_SRC
+
+** 各个描述表的结构不同
+  常用的TTF文件描述表共有19个,其中有10个位每个FFT必须包含的,其他9个可根据需要任选.
++ 以下10个为必须的:
+#+BEGIN_SRC
+  'cmap'       字符代码到文字序号的映射表(character to glyph index mapping table)
+  'glyf'       文字轮廓数据(glyph data)
+  'head'       文件头信息(font header)
+  'hhea'       水平度量头信息(horizontal header)
+  'hmtx'       水平度量信息(horizontal matries)
+  'loca'       字符轮廓数据位置索引(index to location)
+  'maxp'       最大值描述(maximum profile)
+  'name'       名字表(naming table)
+  'post'       Postscript 打印机控制
+  'OS/2'       OS/2和Windows度量信息(OS/2 and Windows metrics)
+#+END_SRC
+
++ 以下9个是可选的描述表:
+#+BEGIN_SRC
+  'cvt'       控制值表(control value table)
+  'fpgm'      定义程序(font program)
+  'hdmx'      水平设备度量(horizontal device metrics)
+  'kern'      紧排控制(kerning)
+  'LTSH'      线性门限(linear threshold)
+  'prep'      CVT程序区(control value program)
+  'WIN'       保留(reserved for future use)
+  'VDMX'      垂直设备度量(vertical device metrics)
+  'FOCA'      保留(reserved for IBM Object Content Architecture data)
+#+END_SRC
+
+*** 代码映射表 'cmap'
+
+
+* 描述表介绍
+
+** 代码映射表 'cmap'
+
+** 轮廓数据表 'glyf'
+
+** 文件投标 'head'
+
+** 轮廓数据索引表 'loca'
+
+** 最大值描述表 'maxp'
+
+
+
+* 关于cmap里的segCountX2,searchRange,entrySelector,rangeShift和针对binary search的优化
+
+** Format 4
+ 是双字节编码。这种格式用于字体文件中的编码分布与几个连续的区域，在区域之间可能有一些保留的空白。而有一些编码可能并不会与字体中的glyph对应。2字节的压缩编码则使用format6。
+
+Format4的格式:
+#+BEGIN_SRC
+struct cmap_subtable_format4
+{
+#define  segCount 10000
+#define  arbitrary_length 10000
+	USHORT 	format;//	 	 	Format number is set to 4.
+	USHORT 	length;//	 		This is the length in bytes of the subtable.
+	USHORT 	language;//	 	 	Please see “Note on the language field in 'cmap' subtables“ in this document.
+	USHORT 	segCountX2;//	 	 	2 x segCount.
+	USHORT 	searchRange;//	 		2 x(2 * *floor(log2(segCount)))
+	USHORT 	entrySelector;//	 		log2(searchRange / 2)
+	USHORT 	rangeShift;//	 		2 x segCount - searchRange
+	USHORT 	endCount[segCount];//	 	 	End characterCode for each segment, last = 0xFFFF.
+	USHORT 	reservedPad;//	 	 	Set to 0.
+	USHORT 	startCount[segCount];//	 	 	Start character code for each segment.
+	SHORT 	idDelta[segCount];//	 	 	Delta for all character codes in segment.
+	USHORT 	idRangeOffset[segCount];//	 	 	Offsets into glyphIdArray or 0
+	USHORT 	glyphIdArray[arbitrary_length];//		Glyph index array(arbitrary length)
+#undef segCount
+#undef arbitrary_length 10000
+};
+
+#+END_SRC
+
+** 从Format 4 里计算glyph索引
+segCount以及idDelta存在的目的,是因为字符编码不是连续的(为什么不连续还不清楚):
+
+比如:字符编码10－20，30－990，100－153才拥有对应的glyph索引.
+如果不进行特殊处理,那么glyph映射必定也是
+glyph[0] = 没有笔画数据
+glyph[1] = 没有笔画数据
+...
+glyph[10]=笔画数据
+glyph[11]=笔画数据
+...
+glyph[20]=笔画数据
+
+glyph[21]=没有笔画数据
+...
+导致glyph数据有很多空白.所以需特殊处理,把不连续的数据映射到从0开始都有数据的glyph数组上.
+使用了idDelta来差量计算(某个segment以及之前的segment"跳过"了多少个数据,进行差值计算)
+
+*** 用二分格式里提供的segCount,searchRange,entrySelector,rangeShifter二分查找
+
+为什么使用segCount和对应的searchRange,entrySelector,rangeShift能够进行优化过的 optimized binary search(二分查找)?
+
+其实真正有用的是segCount,其他的数据都是根据segCount计算出来的:
+比如:字符编码10－20，30－990，100－153才拥有对应的glyph索引,那么分为4段(最后一个增加的是为了表示段表结束)
+
+#+BEGIN_SRC
++-------------+----------+----------+-------------+----------+
+|Name         |segment 1 |segment 2 |segment 3    |segment 4 |
+|             |char 10-20|char 30-90|char 100-153 |MissingGlyph|
++-------------+----------+----------+-------------+----------+
+|startCode    |  10      |  30      |  100        | 0xFFFF   |
++-------------+----------+----------+-------------+----------+
+|endCode      |  20      |  90      |  153        | 0xFFFF   |
++-------------+----------+----------+-------------+----------+
+|idDelta      |  -9      |  -18     |  -27        |  x       |
++-------------+----------+----------+-------------+----------+
+|idRangeOffset|  0       |  0       |  0          |  0       |
++-------------+----------+----------+-------------+----------+
+
+#+END_SRC
+针对这几个值的解释,其实https://partners.adobe.com/public/developer/en/font/5180.sfnt.pdf 这里说的比较清楚
+UINT16 startCode[size],每个元素的大小是sizeof(UINT16) = 2
+那么针对ttf或ttc文件里存储的数据,如果segCount=39,那么文件里各个字段:
+segCountX2 	    78  (39*2)                       ---> segCount*2 = 39*2=78
+searchRange 	64 	(2 * largest power of 2 <=39)---> sizeof(UINT16) * (小于等于39的最大的2的幂)
+entrySelector 	5 	log2 (32)                    ---> log2(小于等于39的最大的2的幂)==log2(searchRange>>1)
+rangeShift 	    14 	2 x 39 - 64                  ---> sizeof(UINT16) * ( segCount-小于等于39的最大的2的幂) = 2 * segCount - 2*(小于等于39的最大的2的幂) = 2*segCount - searchRange
+
+*也就是说,searchRange里和rangeShift里的乘以2,根本就很混淆视听,它把搜索范围用乘以2的操作转成了字节(byte),根本不直观*
+
+不如把searchRange 和 rangeShift就当成segCount的搜索范围来得直观.
+假设已经从文件里读取出来了segCountX2,searchRange,entrySelector,rangeShift的值:
+二分查找伪代码:
+
+#+BEGIN_SRC
+segCount = segCountX2 >> 1;                    ---> 39
+searchRange = searchRange>>1                   ---> 32
+entrySelector = entrySelector;                 ---> 5
+rangeShift = rangeShift >> 1;                  ---> 7
+
+经过上面的操作,接下来这4者之间的关系如下:
+
+entrySelector=N,也就是二分查找searchRange所需要的次数
+rangeShift一定是小于searchRange的!因为searchRange小于等于segCount的最大的2^N,如果
+rangeShift >= searchRange,那么searchRange就应该是2^(N+1),矛盾
+|-----------------------segCount--------------------|
+|--rangeShift--|-------searchRange(2^N)-------------|
+
+
+endCode[segCount]数组,一共是segCount个元素:
+  0    1    2     ...                      segCount-1
+|-20-|-90-|-153-| ...                   ...|-0xFFFF-|
+
+
+因为endCount[segCount]数组是按照endCode升序排列的,
+我们需要寻找第一个endCode大于等于character code的段(段的索引,0,1,2...),然后检查
+startCode是否小于等于character code,如果是则根据idDelta[N]和idRangeOffset去映射glyph索引(index),
+否则返回 missingGlyph.
+
+ +------------------------------+     +-----------------------------------------+
+ |                              |     |                                         |
+ |       startCode              |     |                            endCode      |
+ |  +----------------------+    |     |   index:     address:    +---------+    |
+ |  |    10                |    |     |     0         0xBBB1     | 20      |    |
+ |  |----------------------+    |     |                          +---------+    |
+ |  |    30                |    |     |     1         0xBBB2     | 90      |    |
+ |  +----------------------+    |     |                          |---------+    |
+ |  |    100               |    |     |     2         0xBBB3     | 153     |    |
+ |  +----------------------+    |     |                          |---------+    |
+ |  |                      |    |     |     3         0xBBB4     | ...     |    |
+ |  +----------------------+    |     |                          +---------+    |
+ |  |                      |    |     |                          |         |    |
+ |  |                      |    |     |                          |         |    |
+ |  +----------------------+    |     |                          +---------+    |
+ |  |                      |    |     |                          |         |    |
+ |  +----------------------+    |     |                          |---------+    |
+ |  |  0xFFFF              |    |     |  segCount-1   0xXXXX     | 0xFFFF  |    |
+ |  +----------------------+    |     |                          +---------+    |
+ |                              |     |                                         |
+ +------------------------------+     +-----------------------------------------+
+
+
+
+******下面,针对int endCode[10] = { 0, 11, 22, 33, 44, 55, 66, 77, 88, 99 };这个数组进行举例.*******
+
+//enCode:{ 0,    11,   22,  33,  44,  55,  66,  77,  88,  99 }
+//index :  0     1     2    3    4    5    6    7    8    9
+//    |<-rangShift->|<--------------searchRange------------>|
+
+//segCount = 10;
+//rangeShift=2
+//entrySelector=4;
+//searchRange=8
+
+//rangeShift一定是小于searchRange的!因为searchRange小于等于segCount的最大的2^N,如果
+//rangeShift >= searchRange,那么searchRange就应该是2^(N+1),矛盾
+//所以二分查找一定在entrySelector次后结束
+
+//这里有个特性,也就是关键点,searchRange会历经 8 4 2 1 0(到0就结束)
+//比如 1 2 4 8 16 32 64 128 ... N1 ... N2 这种序列,小于N的任意数,可以由比它小的序列相加来得到!
+//例如,小于32 的 数可以由 1 2 4 8 16来得到:
+      1 + 2 + 4 + 8 + 16 = 31
+          2 + 4 + 8 + 16 = 30
+      1     + 4 + 8 + 16 = 29
+              4 + 8 + 16 = 28
+      1 + 2     + 8 + 16 = 27
+          2     + 8 + 16 = 26
+      1         + 8 + 16 = 25
+                  8 + 16 = 24
+      1 + 2 + 4     + 16 = 23
+          2 + 4     + 16 = 22
+      1     + 4     + 16 = 21
+              4     + 16 = 20
+      1 + 2         + 16 = 19
+          2         + 16 = 18
+      1             + 16 = 17
+//其实从二进制看就很明了:
+32 = 100000
+16 =  10000
+8  =   1000
+4  =    100
+2  =     10
+1  =      1
+
+int search_index = 0;
+//一共是segCount,而索引是0开始的,所以索引是0 ~ segCount-1;
+if (codepoint > endCode[rangeShift-1]) //如果rangeShift最后一个元素不满足大于等于codepoint,直接跳到searchRange的第一个,下标是rangeShift
+{
+  search_index = search_index + rangeShift;
+}
+while(entrySelector>0)
+{
+  if(codepint > endCode[search_index + searchRange>>1])
+ {
+   search_index = search_index + searchRange >> 1;
+ }
+ searchRange = searchRange >> 1;
+ entrySelector--;
+}
+
+#+END_SRC
+
+上面的伪代码最终找出来的(可能)是小于codepoint的最大索引.而不是我们需要的
+大于等于codepoint的最小索引(两者就相差1).
+下面给出寻找大于等于codepoint的最小索引的代码,以及用类似方法实现的二分查找算法
+
+**** 寻找大于等的代码
+
+#+BEGIN_SRC
+//使用二分法查找endCode数组里大于等于(greater equal)codepoint的索引
+void bsearch_greater_equal(int codepoint)
+{
+	//printf("codepoing:%d\n", codepoint);
+	int endCode[10] = { 0, 11,     22, 33, 44, 55, 66, 77, 88, 99 };
+
+	int searchRange = 8;
+	int rangeShift = 2;
+	int entrySelector = 3;
+
+
+	int search_index = 0;
+	if (codepoint > endCode[rangeShift - 1]) //如果rangeShift最后一个元素不满足大于等于codepoint, 直接跳到searchRange的第一个, 下标是rangeShift
+		search_index = search_index + rangeShift;
+	int orignal_search_index = search_index;//相当于数组把数组整体向左移动了rangeShift个位置,orignal_search_index记录起始索引
+	while (entrySelector > 0)
+	{
+		int next_index = search_index + (searchRange >> 1);
+		int next_code = endCode[next_index];
+		if (next_code < codepoint )//最后得到的索引是小于codepoint的最大索引
+		{
+			search_index = next_index;
+		}
+		searchRange = searchRange >> 1;
+		entrySelector--;
+	}
+
+	//  { >=,>=,> , ...> , >, >, > ...}
+	//   /|\
+	//    |
+	//search_index
+	if (search_index == orignal_search_index)//一次都没改变过,说明右边没有比它小的,需要检查它本身和下一个是否满足大于等于它
+	{
+		if (endCode[orignal_search_index] >= codepoint)
+		{
+			search_index = orignal_search_index;
+		}
+		else if (endCode[orignal_search_index + 1] >= codepoint)
+		{
+			search_index = orignal_search_index + 1;
+		}
+	}
+	//  { <,<,< , ...< , >=, >, > ...}
+	//              /|\
+	//               |
+	//          search_index
+	else//经过上面循环之后,search_index是小于(<)unicode_point的左边界,那么大于等于的在后面,需要+1
+	{
+		search_index++;
+	}
+	printf("codepoint : %d find search_index: %d\n", codepoint,search_index);
+}
+#+END_SRC
+
+**** 等于的二分法
+
+#+BEGIN_SRC
+//使用二分法查找endCode数组里等于(greater equal)codepoint的索引
+void bsearch_equal(int codepoint)
+{
+	//printf("codepoing:%d\n", codepoint);
+	int endCode[10] = { 0, 11, 22, 33, 44, 55, 66, 77, 88, 99 };
+	//                             idx        idx   idx idx'
+
+	int searchRange = 8;
+	int rangeShift = 2;
+	int entrySelector = 3;
+
+
+	int search_index = 0;
+	if (codepoint > endCode[rangeShift - 1]) //如果rangeShift最后一个元素不满足大于等于codepoint, 直接跳到searchRange的第一个, 下标是rangeShift
+		search_index = search_index + rangeShift;
+	int orignal_search_index = search_index;//相当于数组起始元素
+	while (entrySelector > 0)
+	{
+		int next_index = search_index + (searchRange >> 1);
+		int next_code = endCode[next_index];
+		if (next_code < codepoint)
+		{
+			search_index = next_index;
+		}
+		searchRange = searchRange >> 1;
+		entrySelector--;
+	}
+
+	//  { >=,>=,> , ...> , >, >, > ...}
+	//   /|\
+	//    |
+	//search_index
+	if (search_index == orignal_search_index)//一次都没改变过,说明右边没有比它小的,需要检查它本身和下一个是否等于它
+	{
+		if (endCode[orignal_search_index] == codepoint)
+		{
+			search_index = orignal_search_index;
+		}
+		else if (endCode[orignal_search_index + 1] == codepoint)
+		{
+			search_index = orignal_search_index + 1;
+		}
+		else//都不满足等于,说明没有找到
+		{
+			search_index = -1;
+		}
+	}
+	//  { <,<,< , ...< , >=, >, > ...}
+	//              /|\
+	//               |
+	//          search_index
+	else//经过上面循环之后,search_index是小于(<)unicode_point的左边界,那么大于等于的在后面,需要+1
+	{
+		search_index++;
+		if (endCode[search_index] != codepoint)//下一个大于等于的边界不等于,没找到
+		{
+			search_index = -1;
+		}
+	}
+	printf("codepoint : %d find search_index: %d\n", codepoint, search_index);
+}
+
+#+END_SRC
+
+
+ #+BEGIN_SRC 
+                    +----------------------------+
+                    |     glyph                  |
+                    |  +---------------------+   |
+                    |  |   contours          |   |
+                    |  |  +----------------+ |   |
+                    |  |  | bezier curves  | |   |
+                    |  |  | +-----------+  | |   |
+                    |  |  | | points    |  | |   |
+                    |  |  | +-----------+  | |   |
+                    |  |  +----------------+ |   |
+                    |  +---------------------+   |
+                    +----------------------------+
+ #+END_SRC
+
+     
+
+* 光栅化
+
+** 像素,点和设备解析度
+http://wenku.baidu.com/link?url=8rS8NQwUQv-lT-i4U9meaAaD119T4bPWtlJ-fPv_wqHQUSZ84SirZ6_zONwt5ZKbImCz0KM1HaBx6gcgHxaV_gibTfuecuYZm4OJUqPMyMG
+
+*** 像素数的计算 | 
+  像素的物理尺寸通常不是正方,垂直和水平有多种分辨率. 分辨率用dpi( dot per inch,每英寸点数)表示.
+例如一个打印机分辨率为300x600表示每英寸在水平方向300个像素垂直方向有600个像素点.
+  显然,设计字体时候不能让字体坐标采用像素坐标,如果采用就会有问题:
+  (1) 如果水平和垂直方向dpi不一致,本来是方形的字体,就可能被拉伸或压扁.
+  (2) 屏幕像素没有那么精细,这样字体就没那么精细.
+  (3) 缩放是个问题,以什么作为参考来缩放字体到合适大小? |
+  
+  所以ttf坐标值没有采用像素坐标,而是采用自己的一套坐标: x向右,y向上,坐标范围是 -16384 到 16383.
+单独看这个坐标其实没有任何意义,只是定义了笔画上点的相对位置而已.TrueType Font字体里面的坐标都是位于这个范围之内,
+保存在short里.
+
+  那么ttf文件里的x,y坐标一般都是什么值?
+
+  字体设计者在创建字型轮廓的时候,会使用一个假想的正方形轮廓,叫做EM正方形.在一个字体中，每个字符都放置在其空间容器内。
+在传统的金属字模中，这个容器就是每个字符的实际金属块。每个字符的高度是统一的，这样每个字模可以整齐地放进行和块中.
+  
+  字模的高度被称为“em”，起源于大写的字符“M”的宽度；这个字母的比例被做成了方形（因此有了“EM Square”的称呼）。
+  
+  em size是根据字模计算出的点值。因此一个10磅的字体em也是10磅（如下）。
+   
+  在数字化字体中，em是空间的数字化定义总量。在OpenType字体中，UPM或em大小通常是1000单位。在TrueType字体中，
+UPM约定是2的幂，通常是1024或2048。
+
+ 当时用字体来设置样式时，em将会缩放到需要的点值。这意味着对于10磅的字体样式，1000单位在这个实例中将会缩小到10磅。
+
+ 因此如果你的大写的“H”时700单位高，那么它在一个10磅的字体中将会被缩放到7磅高。
+
+
+
+
+!!!! point size doesn’t relate to anything specific in size of printed letters! Yes, given a specific font,
+ the size of 12 point text in print is related to the font data. But 12 point in one font can be bigger or
+ smaller than 12 point in another.
+EM和最后显示出来的像素大小没有任何关系.它只是一个中介,字体坐标<-->EM<-->像素大小
+
+In digital type, the EM does not refer to a “real” box. You better consider the EM as a yardstick – an abstract 
+letter-height yardstick which establishes a link between micro and macro level, between font-internal unit system and
+ font-external unit system: The font-internal unit system is defined via UPM, i.e. as the number of units per EM. It is
+ the letter-design grid or resolution. The font-external unit system may be typographic point, millimeter, pixel, etc. 
+And this abstract EM serves to project the font-internal unit system onto the font-external unit system.
+
+An example. You have a font with 2048 units per EM, internally, which is to be projected on 12 pt type size, externally. 
+So 12 pts = 2048 M-units or 1 M-unit = 12/2048 pt.
+
+So to image the font at 12 point, one scales the abstract EM to equal 12 points.
+
+litigation 起诉
+contesting 竞争
+salvo      礼炮;奇袭
+swash      v.泼散(水)；奔流；虚夸；虚张声势 n.（浪头拍岸后的）冲激
+typographic adj.印刷(术)上的
+unobtrusive adj.不张扬的；不招摇的
+scammer na.【计】主页
+disclaimer n.免责声明；弃权声明（书）
+legislation  n.立法；法律；法规；制订法律
+yardstick
+legitimate
